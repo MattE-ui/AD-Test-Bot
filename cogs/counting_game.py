@@ -15,7 +15,8 @@ def _load_config() -> dict:
         "reddit_channel_id": None,
         "counting_channel_id": None,
         "counting_paused": False,
-        "current_count": 0
+        "current_count": 0,
+        "allow_chat_between_counts": False
     }
     if not os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, "w") as f:
@@ -28,6 +29,7 @@ def _load_config() -> dict:
         except json.JSONDecodeError:
             data = defaults
 
+    # Ensure all keys exist
     for key, val in defaults.items():
         if key not in data:
             data[key] = val
@@ -74,18 +76,20 @@ class CountingGame(commands.Cog):
 
         self.current_count = self._config.get("current_count", 0)
         self.paused = self._config.get("counting_paused", False)
+        self.allow_chat = self._config.get("allow_chat_between_counts", False)
         self.last_user_id = None
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        # Ignore bots and non-guild messages
+        # Ignore bots and DMs
         if message.author.bot or not message.guild:
             return
 
-        # Reload config state each message
+        # Reload config on each message
         self._config = _load_config()
         self.current_count = self._config.get("current_count", 0)
         self.paused = self._config.get("counting_paused", False)
+        self.allow_chat = self._config.get("allow_chat_between_counts", False)
         count_chan_id = self._config.get("counting_channel_id")
 
         # If paused or no channel set, skip
@@ -94,8 +98,8 @@ class CountingGame(commands.Cog):
 
         content = message.content.strip()
         if not content.isdigit():
-            # If we’re in a running count, any non-number resets
-            if self.current_count != 0:
+            # Non-numeric message
+            if not self.allow_chat and self.current_count != 0:
                 await self._fail(message.channel, message.author, "sent a non-number! Starting over.")
             return
 
@@ -107,7 +111,7 @@ class CountingGame(commands.Cog):
                 self.current_count = 1
                 self.last_user_id = message.author.id
 
-                # React with ✅ (1–99 cycle) and record
+                # React with ✅ (cycle 1–99)
                 await message.add_reaction("✅")
                 self._record_success(message.author.id, 1)
                 self._update_high_global(1)
@@ -117,10 +121,9 @@ class CountingGame(commands.Cog):
                 _save_config(self._config)
                 return
             else:
-                # Wrong start
                 await self._fail(
-                    message.channel, 
-                    message.author, 
+                    message.channel,
+                    message.author,
                     f"tried to start with **{number}** instead of **1**."
                 )
                 return
@@ -136,8 +139,8 @@ class CountingGame(commands.Cog):
         # Wrong number?
         if number != expected:
             await self._fail(
-                message.channel, 
-                message.author, 
+                message.channel,
+                message.author,
                 f"counted **{number}**, but expected **{expected}**."
             )
             return
@@ -150,16 +153,15 @@ class CountingGame(commands.Cog):
         self._config["current_count"] = self.current_count
         _save_config(self._config)
 
-        # Add the correct reaction based on the number
+        # Add reaction based on the number
         num = self.current_count
         if num % 100 == 0:
             await message.add_reaction("🎉")
-            # Also send milestone message
+            # Announce milestone
             await message.channel.send(f"🎉 We've reached **{num}**! Keep it going!")
         else:
-            # Determine which 100-range we’re in (modulo 500 to repeat cycle)
             rem = num % 500
-            grp = rem // 100  # 0 → 1–99, 1 → 101–199, etc.
+            grp = rem // 100
             if grp == 0:
                 await message.add_reaction("✅")
             elif grp == 1:
@@ -176,9 +178,6 @@ class CountingGame(commands.Cog):
         self._update_high_global(self.current_count)
 
     def _record_success(self, user_id: int, number_reached: int):
-        """
-        Update stats for a successful count by user_id.
-        """
         tot = self._stats["total_counts"].get(str(user_id), 0) + 1
         self._stats["total_counts"][str(user_id)] = tot
 
@@ -189,18 +188,12 @@ class CountingGame(commands.Cog):
         _save_stats(self._stats)
 
     def _update_high_global(self, number_reached: int):
-        """
-        Update global high if this number is a new record.
-        """
         prev_high = self._stats.get("high_count", 0)
         if number_reached > prev_high:
             self._stats["high_count"] = number_reached
             _save_stats(self._stats)
 
     async def _fail(self, channel: discord.TextChannel, user: discord.Member, reason: str):
-        """
-        Handle a failure: send a message, record the fail, reset the count.
-        """
         fails = self._stats["fail_counts"].get(str(user.id), 0) + 1
         self._stats["fail_counts"][str(user.id)] = fails
         _save_stats(self._stats)
@@ -275,9 +268,21 @@ class CountingGame(commands.Cog):
             f"✅ Skipped to **{number}**. Next expected: {number + 1}."
         )
 
+    @app_commands.command(name="toggle_chat_between_counts", description="Allow or disallow messages between counts (Admin only).")
+    async def toggle_chat_between_counts(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ You must be an admin to use this.", ephemeral=True)
+            return
+
+        current = self._config.get("allow_chat_between_counts", False)
+        self._config["allow_chat_between_counts"] = not current
+        _save_config(self._config)
+        state = "enabled" if self._config["allow_chat_between_counts"] else "disabled"
+        await interaction.response.send_message(f"💬 Chat between counts is now **{state}**.")
+
     @app_commands.command(name="view_stats", description="View counting stats.")
     async def view_stats(self, interaction: discord.Interaction):
-        # Now available to everyone, sends publicly
+        # Available to everyone, sends publicly
         stats = _load_stats()
         high_count = stats.get("high_count", 0)
         user_highs = stats.get("user_highs", {})
