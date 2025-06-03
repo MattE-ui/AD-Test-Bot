@@ -4,6 +4,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 import os
 import asyncio
+import webserver
 
 load_dotenv()
 
@@ -49,6 +50,8 @@ async def main():
     async with bot:
         await load_cogs()
         await bot.start(TOKEN)
+
+webserver.keep_alive()
 
 if __name__ == "__main__":
     asyncio.run(main())
