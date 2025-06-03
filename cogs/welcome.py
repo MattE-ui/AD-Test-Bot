@@ -76,7 +76,7 @@ class Welcome(commands.Cog):
             if fallback_channel:
                 await fallback_channel.send(message, view=view)
 
-    @app_commands.command(name="toggle_welcome", description="(Developer Only) Toggle welcome messages.")
+    #@app_commands.command(name="toggle_welcome", description="(Developer Only) Toggle welcome messages.")
     async def toggle_welcome(self, interaction: discord.Interaction):
         developer_id = os.getenv("DEVELOPER_ID")
         if not developer_id or str(interaction.user.id) != developer_id:
