@@ -140,8 +140,9 @@ class ConfigSelect(Select):
             current = get_config("counting_paused") or False
             new = not current
             set_config("counting_paused", new)
-            state = "paused" if new else "resumed"
-            await interaction.response.send_message(f"⏹️ Counting game is now **{state}**.", ephemeral=True)
+            state = "✅ Enabled" if not new else "❌ Disabled"
+            await interaction.response.send_message(f"🔢 Counting game is now {state}.", ephemeral=True)
+
 
         elif choice == "toggle_welcome":
             current = get_config("welcome_enabled") or False

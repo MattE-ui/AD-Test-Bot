@@ -5,9 +5,11 @@ from discord.ext import commands
 from discord import app_commands
 import os
 from dotenv import load_dotenv
+import traceback
 
 load_dotenv()
 DEVELOPER_ID = int(os.getenv("DEVELOPER_ID"))
+GUILD_ID = int(os.getenv("GUILD_ID"))
 
 class DevTools(commands.Cog):
     def __init__(self, bot):
@@ -45,21 +47,38 @@ class DevTools(commands.Cog):
             await self.bot.reload_extension(f"cogs.{cog}")
             await interaction.response.send_message(f"✅ Reloaded cog: `{cog}`", ephemeral=True)
         except Exception as e:
-            await interaction.response.send_message(f"❌ Failed to reload cog `{cog}`: `{e}`", ephemeral=True)
-    
-    @app_commands.command(name="clear_commands", description="⚠️ Clear all global slash commands (dev only).")
+            traceback_str = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+            await interaction.response.send_message(f"❌ Failed to reload cog `{cog}`:\n```{traceback_str[:1900]}```", ephemeral=True)
+
+    @app_commands.command(name="clear_commands", description="🧹 Clear slash commands from this dev server only.")
+    @app_commands.guilds(discord.Object(id=GUILD_ID))
     async def clear_commands(self, interaction: discord.Interaction):
         if not self.is_developer(interaction):
-            return await interaction.response.send_message("❌ You are not authorized.", ephemeral=True)
+            return await interaction.response.send_message("❌ Unauthorized", ephemeral=True)
 
-        await self.bot.tree.clear_commands(guild=None)
-        await self.bot.tree.sync()
-        await interaction.response.send_message("🧹 Cleared all global slash commands. Please re-sync.", ephemeral=True)
+        try:
+            guild = discord.Object(id=interaction.guild_id)
+            self.bot.tree.clear_commands(guild=guild)
+            await self.bot.tree.sync(guild=guild)
+            await interaction.response.send_message("🧹 Slash commands cleared from this dev server.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Failed to clear commands: {e}", ephemeral=True)
+
+    @app_commands.command(name="clear_global_commands", description="🚨 Clear all global slash commands (use cautiously).")
+    async def clear_global_commands(self, interaction: discord.Interaction):
+        if not self.is_developer(interaction):
+            return await interaction.response.send_message("❌ Unauthorized", ephemeral=True)
+
+        try:
+            self.bot.tree.clear_commands(guild=None)
+            await self.bot.tree.sync()
+            await interaction.response.send_message("🌍 Cleared all global slash commands.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Failed to clear global commands: {e}", ephemeral=True)
 
     @app_commands.command(name="devtest", description="Test if devtools slash commands are registering.")
     async def devtest(self, interaction: discord.Interaction):
         await interaction.response.send_message("✅ Devtools is registering correctly!", ephemeral=True)
-
 
 
 async def setup(bot):
