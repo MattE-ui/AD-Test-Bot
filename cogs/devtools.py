@@ -18,14 +18,14 @@ class DevTools(commands.Cog):
     def is_developer(self, interaction: discord.Interaction) -> bool:
         return interaction.user.id == DEVELOPER_ID
 
-    @app_commands.command(name="sync", description="🔁 Sync all slash commands globally.")
+    @app_commands.command(name="sync", description="(DEV ONLY) 🔁 Sync all slash commands globally.")
     async def sync(self, interaction: discord.Interaction):
         if not self.is_developer(interaction):
             return await interaction.response.send_message("❌ You are not authorized to use this.", ephemeral=True)
         await self.bot.tree.sync()
         await interaction.response.send_message("✅ Slash commands synced.", ephemeral=True)
 
-    @app_commands.command(name="eval", description="⚙️ Evaluate a Python expression (dev only).")
+    @app_commands.command(name="eval", description="(DEV ONLY) ⚙️ Evaluate a Python expression.")
     @app_commands.describe(code="The Python code to evaluate")
     async def eval_command(self, interaction: discord.Interaction, code: str):
         if not self.is_developer(interaction):
@@ -37,7 +37,7 @@ class DevTools(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"⚠️ Error: `{e}`", ephemeral=True)
 
-    @app_commands.command(name="reload_cog", description="♻️ Reload a specific cog by name.")
+    @app_commands.command(name="reload_cog", description="(DEV ONLY) ♻️ Reload a specific cog by name.")
     @app_commands.describe(cog="Name of the cog (e.g. counting_game)")
     async def reload_cog(self, interaction: discord.Interaction, cog: str):
         if not self.is_developer(interaction):
@@ -50,7 +50,7 @@ class DevTools(commands.Cog):
             traceback_str = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
             await interaction.response.send_message(f"❌ Failed to reload cog `{cog}`:\n```{traceback_str[:1900]}```", ephemeral=True)
 
-    @app_commands.command(name="clear_commands", description="🧹 Clear slash commands from this dev server only.")
+    @app_commands.command(name="clear_commands", description="(DEV ONLY) 🧹 Clear slash commands from this dev server only.")
     @app_commands.guilds(discord.Object(id=GUILD_ID))
     async def clear_commands(self, interaction: discord.Interaction):
         if not self.is_developer(interaction):
@@ -64,7 +64,7 @@ class DevTools(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"❌ Failed to clear commands: {e}", ephemeral=True)
 
-    @app_commands.command(name="clear_global_commands", description="🚨 Clear all global slash commands (use cautiously).")
+    @app_commands.command(name="clear_global_commands", description="(DEV ONLY) 🚨 Clear all global slash commands (use cautiously).")
     async def clear_global_commands(self, interaction: discord.Interaction):
         if not self.is_developer(interaction):
             return await interaction.response.send_message("❌ Unauthorized", ephemeral=True)
@@ -76,7 +76,7 @@ class DevTools(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"❌ Failed to clear global commands: {e}", ephemeral=True)
 
-    @app_commands.command(name="devtest", description="Test if devtools slash commands are registering.")
+    @app_commands.command(name="devtest", description="(DEV ONLY) Test if devtools slash commands are registering.")
     async def devtest(self, interaction: discord.Interaction):
         await interaction.response.send_message("✅ Devtools is registering correctly!", ephemeral=True)
 

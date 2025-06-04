@@ -234,7 +234,7 @@ class ConfigMenu(commands.Cog):
 
     @app_commands.command(
         name="setup",
-        description="Open the setup menu to configure bot features."
+        description="(ADMIN ONLY) Open the setup menu to configure bot features."
     )
     @app_commands.checks.has_permissions(administrator=True)
     async def setup(self, interaction: discord.Interaction):

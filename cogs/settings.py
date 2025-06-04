@@ -11,7 +11,7 @@ class Settings(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="show_settings", description="Show all current bot settings.")
+    @app_commands.command(name="show_settings", description="(ADMIN ONLY) Show all current bot settings.")
     @app_commands.checks.has_permissions(administrator=True)
     async def show_settings(self, interaction: discord.Interaction):
         config = get_all_config()
@@ -52,7 +52,7 @@ class Settings(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="toggle_setting", description="Toggle a boolean setting (true/false).")
+    @app_commands.command(name="toggle_setting", description="(ADMIN ONLY) Toggle a boolean setting (true/false).")
     @app_commands.describe(key="The config key to toggle (must be a boolean)")
     @app_commands.checks.has_permissions(administrator=True)
     async def toggle_setting(self, interaction: discord.Interaction, key: str):
@@ -64,7 +64,7 @@ class Settings(commands.Cog):
         set_config(key, new_value)
         await interaction.response.send_message(f"✅ `{key}` is now set to `{new_value}`.", ephemeral=True)
 
-    @app_commands.command(name="set_counting_channel", description="Set this channel as the counting channel.")
+    @app_commands.command(name="set_counting_channel", description="(ADMIN ONLY) Set this channel as the counting channel.")
     @app_commands.checks.has_permissions(administrator=True)
     async def set_counting_channel(self, interaction: discord.Interaction):
         set_config("counting_channel_id", interaction.channel.id)
@@ -72,7 +72,7 @@ class Settings(commands.Cog):
             f"🔢 Counting channel set to {interaction.channel.mention}.", ephemeral=True
         )
 
-    @app_commands.command(name="set_config", description="Set a config key manually.")
+    @app_commands.command(name="set_config", description="(ADMIN ONLY) Set a config key manually.")
     @app_commands.describe(key="The config key to set", value="The value to store")
     @app_commands.checks.has_permissions(administrator=True)
     async def set_config_command(self, interaction: discord.Interaction, key: str, value: str):

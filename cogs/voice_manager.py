@@ -77,7 +77,7 @@ class VoiceManager(commands.Cog):
 
     # ───── SLASH COMMANDS ────────────────────────────────
 
-    @app_commands.command(name="set_tempvc_trigger", description="Set this voice channel as the Join-to-Create entry.")
+    @app_commands.command(name="set_tempvc_trigger", description="(ADMIN ONLY) Set this voice channel as the Join-to-Create entry.")
     @app_commands.checks.has_permissions(administrator=True)
     async def set_entry_channel(self, interaction: discord.Interaction):
         if isinstance(interaction.channel, discord.VoiceChannel):

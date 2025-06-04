@@ -73,13 +73,13 @@ class CountingGame(commands.Cog):
                     delete_after=10
                 )
 
-    @app_commands.command(name="pause_counting", description="Pause the counting game.")
+    @app_commands.command(name="pause_counting", description="(ADMIN ONLY) Pause the counting game.")
     @app_commands.checks.has_permissions(administrator=True)
     async def pause_counting(self, interaction: discord.Interaction):
         set_config("counting_paused", True)
         await interaction.response.send_message("⏸️ Counting has been paused.", ephemeral=True)
 
-    @app_commands.command(name="resume_counting", description="Resume the counting game.")
+    @app_commands.command(name="resume_counting", description="(ADMIN ONLY) Resume the counting game.")
     @app_commands.checks.has_permissions(administrator=True)
     async def resume_counting(self, interaction: discord.Interaction):
         set_config("counting_paused", False)

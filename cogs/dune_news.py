@@ -5,7 +5,6 @@ from discord.ext import commands, tasks
 from discord import app_commands
 from bs4 import BeautifulSoup
 import aiohttp
-import asyncio
 import sqlite3
 from datetime import datetime
 from database.config_store import get_config
@@ -33,6 +32,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def has_been_posted(url):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -41,12 +41,14 @@ def has_been_posted(url):
     conn.close()
     return result is not None
 
+
 def mark_as_posted(url):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("INSERT OR IGNORE INTO posted_articles (url) VALUES (?)", (url,))
     conn.commit()
     conn.close()
+
 
 async def fetch_html(session, url):
     try:
@@ -57,13 +59,11 @@ async def fetch_html(session, url):
     except Exception as e:
         return None, str(e)
 
+
 async def fetch_news_urls(session, limit=5):
     html, error = await fetch_html(session, NEWS_INDEX)
     if error or html is None:
-        print("[DEBUG] Failed to fetch news index:", error)
         return [], error or "Failed to fetch news index."
-
-    print("[DEBUG] Fetched news index HTML length:", len(html))
 
     soup = BeautifulSoup(html, "html.parser")
     links = soup.find_all("a")
@@ -75,36 +75,33 @@ async def fetch_news_urls(session, limit=5):
         if href.startswith("https://duneawakening.com/news/") and href not in seen:
             seen.add(href)
             urls.append(href)
-            print(f"[DEBUG] Found article link: {href}")
         if len(urls) >= limit:
             break
 
-    if not urls:
-        print("[DEBUG] No valid news links extracted.")
+    return urls, None if urls else "No articles found."
 
-    return urls, None if urls else "No articles found in news index."
 
 async def fetch_article_content(session, url):
     html, error = await fetch_html(session, url)
     if error or html is None:
-        return "", "", "", None, error or "Failed to fetch article."
+        return "", "", "", None, error
 
     soup = BeautifulSoup(html, "html.parser")
     title = soup.find("h1").get_text(strip=True) if soup.find("h1") else "Untitled"
-    img_tag = soup.find("img")
-    image = img_tag["src"] if img_tag and img_tag.get("src") else None
 
-    # Updated fallback logic for extracting paragraphs
+    # Get hero image from <meta property="og:image">
+    image = None
+    og_tag = soup.find("meta", property="og:image")
+    if og_tag and og_tag.get("content", "").startswith("https://"):
+        image = og_tag["content"].strip()
+
+    # Extract content paragraphs
     body = (
         soup.find("div", class_="content")
         or soup.find("div", class_="brxe-text-basic news-archive__text")
         or soup.find("main")
     )
     paragraphs = [p.get_text(strip=True) for p in body.find_all("p")] if body else []
-
-    if not paragraphs:
-        print(f"[DEBUG] No paragraphs found at {url}")
-
     content = "\n\n".join(paragraphs)
 
     published = None
@@ -112,15 +109,47 @@ async def fetch_article_content(session, url):
     if time_tag and time_tag.has_attr("datetime"):
         try:
             published = datetime.fromisoformat(time_tag["datetime"].replace("Z", "+00:00"))
-        except:
+        except Exception:
             published = datetime.utcnow()
 
     return title, content, image, published, None
+
+
+def trim_to_paragraph_limit(text, limit=1800):
+    """Trim article at paragraph boundaries within a char limit."""
+    result = ""
+    total = 0
+    for paragraph in text.split("\n\n"):
+        if total + len(paragraph) + 2 > limit:
+            break
+        result += paragraph + "\n\n"
+        total += len(paragraph) + 2
+    return result.strip() + ("…" if total >= limit else "")
+
+
+def summarize_by_word_limit(text, word_limit=100):
+    """Build 100-word summary, keeping paragraph breaks."""
+    paragraphs = text.split("\n\n")
+    result = ""
+    count = 0
+    for p in paragraphs:
+        words = p.split()
+        if count + len(words) <= word_limit:
+            result += p + "\n\n"
+            count += len(words)
+        else:
+            remain = word_limit - count
+            if remain > 0:
+                result += " ".join(words[:remain]) + "…"
+            break
+    return result.strip()
+
 
 class ReadMoreView(discord.ui.View):
     def __init__(self, url):
         super().__init__(timeout=None)
         self.add_item(discord.ui.Button(label="📖 Read Full Article", url=url))
+
 
 class DuneNews(commands.Cog):
     def __init__(self, bot):
@@ -154,9 +183,11 @@ class DuneNews(commands.Cog):
                 if error or not content:
                     continue
 
+                display_text = trim_to_paragraph_limit(content)
+
                 embed = discord.Embed(
                     title=title,
-                    description=(content[:1800] + "…") if len(content) > 1800 else content,
+                    description=display_text,
                     color=0xDEB887,
                     timestamp=published or discord.utils.utcnow(),
                     url=url
@@ -176,20 +207,21 @@ class DuneNews(commands.Cog):
     @app_commands.command(name="dune_news", description="Get the latest Dune: Awakening newsletter.")
     async def dune_news(self, interaction: discord.Interaction):
         await interaction.response.defer()
-
         async with aiohttp.ClientSession() as session:
-            urls, err = await fetch_news_urls(session, limit=5)
+            urls, err = await fetch_news_urls(session)
             if err or not urls:
-                print("[DEBUG] Failed to fetch news index:", err)
                 return await interaction.followup.send(f"❌ {err or 'No news found.'}")
 
             for url in urls:
                 title, content, image, published, error = await fetch_article_content(session, url)
                 if error or not content:
                     continue
+
+                display_text = trim_to_paragraph_limit(content)
+
                 embed = discord.Embed(
                     title=title,
-                    description=(content[:1800] + "…") if len(content) > 1800 else content,
+                    description=display_text,
                     color=0xDEB887,
                     timestamp=published or discord.utils.utcnow(),
                     url=url
@@ -197,6 +229,7 @@ class DuneNews(commands.Cog):
                 if image:
                     embed.set_image(url=image)
                 embed.set_footer(text="Dune: Awakening News")
+
                 return await interaction.followup.send(embed=embed, view=ReadMoreView(url))
 
             await interaction.followup.send("❌ Could not fetch any valid news posts.")
@@ -204,32 +237,37 @@ class DuneNews(commands.Cog):
     @app_commands.command(name="dune_news_summary", description="Summarize the last 3 Dune: Awakening posts.")
     async def dune_news_summary(self, interaction: discord.Interaction):
         await interaction.response.defer()
-
         async with aiohttp.ClientSession() as session:
-            urls, err = await fetch_news_urls(session, limit=5)
+            urls, err = await fetch_news_urls(session)
             if err or not urls:
-                print("[DEBUG] Failed to fetch news index:", err)
                 return await interaction.followup.send(f"❌ {err or 'No news found.'}")
 
-            summaries = []
+            sent = 0
             for url in urls:
                 title, content, image, published, error = await fetch_article_content(session, url)
                 if error or not content:
                     continue
-                words = content.split()
-                summary = " ".join(words[:100]) + ("..." if len(words) > 100 else "")
-                entry = f"**[{title}]({url})**\n{summary}"
-                summaries.append(entry)
-                if len(summaries) == 3:
+
+                summary = summarize_by_word_limit(content)
+
+                embed = discord.Embed(
+                    title=title,
+                    description=summary,
+                    color=discord.Color.dark_gold(),
+                    timestamp=published or discord.utils.utcnow(),
+                    url=url
+                )
+                if image:
+                    embed.set_image(url=image)
+                embed.set_footer(text="Dune: Awakening News")
+
+                await interaction.followup.send(embed=embed, view=ReadMoreView(url))
+                sent += 1
+                if sent >= 3:
                     break
 
-            if not summaries:
-                return await interaction.followup.send("❌ No valid summaries found.")
-
-            for entry in summaries:
-                if len(entry) > 2000:
-                    entry = entry[:1997] + "..."
-                await interaction.followup.send(entry)
+            if sent == 0:
+                await interaction.followup.send("❌ No valid summaries found.")
 
 
 async def setup(bot):
