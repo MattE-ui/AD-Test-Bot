@@ -30,16 +30,6 @@ class ConfigSelect(Select):
             value="toggle_welcome"
         ),
         discord.SelectOption(
-            label="Set Voice Status Channel",
-            description="Choose which voice channel shows live stats",
-            value="set_voice_status_channel"
-        ),
-        discord.SelectOption(
-            label="Toggle Voice Logging",
-            description="Enable or disable voice join/leave logs",
-            value="toggle_voice_logging"
-        ),
-        discord.SelectOption(
             label="Set Voice Log Channel",
             description="Choose which text channel logs voice activity",
             value="set_voice_log_channel"
@@ -58,6 +48,16 @@ class ConfigSelect(Select):
             label="Set Dune News Channel",
             description="Choose which text channel posts Dune Awakening updates",
             value="set_dune_news_channel"
+        ),
+        discord.SelectOption(
+            label="Set Reddit Minimum Upvotes",
+            description="Change the minimum upvotes a post must have before mirroring",
+            value="set_reddit_min_upvotes"
+        ),
+        discord.SelectOption(
+            label="Set Join Voice Channel",
+            description="Choose which voice channel triggers temp channel creation",
+            value="set_voice_entry_channel"
         ),
     ]
 
@@ -94,14 +94,6 @@ class ConfigSelect(Select):
                 prompt="Select the **text channel** for welcome messages."
             )
 
-        elif choice == "set_voice_status_channel":
-            await open_channel_select(
-                interaction,
-                config_key="voice_status_channel_id",
-                channel_types=[discord.ChannelType.voice],
-                prompt="Select the **voice channel** for auto‐rename stats."
-            )
-
         elif choice == "set_voice_log_channel":
             await open_channel_select(
                 interaction,
@@ -126,6 +118,24 @@ class ConfigSelect(Select):
                 prompt="Select the **text channel** for Dune: Awakening news updates."
             )
 
+        elif choice == "set_voice_entry_channel":
+            await open_channel_select(
+                interaction,
+                config_key="voice_entry_channel_id",
+                channel_types=[discord.ChannelType.voice],
+                prompt="Select the **Join-to-Create** voice channel."
+            )
+
+        elif choice == "set_reddit_min_upvotes":
+            await open_number_input(
+                interaction,
+                config_key="reddit_min_upvotes",
+                prompt="Enter the **minimum number of upvotes** a Reddit post must have to be mirrored.",
+                min_value=1,
+                max_value=1000,
+                default=get_config("reddit_min_upvotes") or 20
+            )
+
         elif choice == "toggle_counting":
             current = get_config("counting_paused") or False
             new = not current
@@ -139,13 +149,6 @@ class ConfigSelect(Select):
             set_config("welcome_enabled", new)
             state = "enabled" if new else "disabled"
             await interaction.response.send_message(f"👋 Welcome messages are now **{state}**.", ephemeral=True)
-
-        elif choice == "toggle_voice_logging":
-            current = get_config("voice_logging_enabled") or False
-            new = not current
-            set_config("voice_logging_enabled", new)
-            state = "enabled" if new else "disabled"
-            await interaction.response.send_message(f"📝 Voice logging is now **{state}**.", ephemeral=True)
 
         elif choice == "toggle_reddit":
             current = get_config("reddit_enabled") or False
@@ -177,7 +180,7 @@ class ChannelSelectView(View):
         self.add_item(select)
 
     async def select_channel(self, interaction: discord.Interaction):
-        selected = interaction.data["values"][0]  # channel ID as string
+        selected = interaction.data["values"][0]
         channel_id = int(selected)
         channel = interaction.guild.get_channel(channel_id)
 
@@ -194,6 +197,34 @@ class ChannelSelectView(View):
 async def open_channel_select(interaction, config_key, channel_types, prompt):
     view = ChannelSelectView(config_key=config_key, channel_types=channel_types, prompt=prompt)
     await interaction.response.send_message(prompt, view=view, ephemeral=True)
+
+
+async def open_number_input(interaction, config_key, prompt, min_value=1, max_value=1000, default=20):
+    class NumberInput(discord.ui.Modal, title="Set Minimum Upvotes"):
+        upvotes = discord.ui.TextInput(
+            label="Minimum upvotes",
+            placeholder="Enter a number...",
+            default=str(default),
+            required=True,
+            min_length=1,
+            max_length=4
+        )
+
+        async def on_submit(self, modal_interaction: discord.Interaction):
+            try:
+                value = int(self.upvotes.value)
+                if value < min_value or value > max_value:
+                    raise ValueError
+                set_config(config_key, value)
+                await modal_interaction.response.send_message(
+                    f"✅ Minimum upvotes set to **{value}**.", ephemeral=True
+                )
+            except ValueError:
+                await modal_interaction.response.send_message(
+                    "❌ Invalid number. Please try again.", ephemeral=True
+                )
+
+    await interaction.response.send_modal(NumberInput())
 
 
 class ConfigMenu(commands.Cog):
