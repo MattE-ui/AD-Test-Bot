@@ -3,18 +3,15 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from discord.ui import View, Select
+from discord.ui import View, Select, ChannelSelect
 from database.config_store import get_config, set_config
 
+
 class ConfigSelect(Select):
-    """
-    A single dropdown (Select) containing all configurable actions.
-    When the user selects one, the corresponding logic runs.
-    """
     OPTIONS = [
         discord.SelectOption(
             label="Set Counting Channel",
-            description="Register this channel as the counting channel",
+            description="Choose which text channel is the counting channel",
             value="set_counting_channel"
         ),
         discord.SelectOption(
@@ -24,7 +21,7 @@ class ConfigSelect(Select):
         ),
         discord.SelectOption(
             label="Set Welcome Channel",
-            description="Register this channel as the welcome channel",
+            description="Choose which text channel is for welcome messages",
             value="set_welcome_channel"
         ),
         discord.SelectOption(
@@ -34,7 +31,7 @@ class ConfigSelect(Select):
         ),
         discord.SelectOption(
             label="Set Voice Status Channel",
-            description="Register this voice channel for auto‐rename stats",
+            description="Choose which voice channel shows live stats",
             value="set_voice_status_channel"
         ),
         discord.SelectOption(
@@ -44,18 +41,23 @@ class ConfigSelect(Select):
         ),
         discord.SelectOption(
             label="Set Voice Log Channel",
-            description="Register this text channel for voice logs",
+            description="Choose which text channel logs voice activity",
             value="set_voice_log_channel"
         ),
         discord.SelectOption(
             label="Set Reddit Channel",
-            description="Register this channel for Reddit mirror posts",
+            description="Choose which text channel is for Reddit mirror",
             value="set_reddit_channel"
         ),
         discord.SelectOption(
             label="Toggle Reddit Mirror",
             description="Enable or disable the Reddit mirror feature",
             value="toggle_reddit"
+        ),
+        discord.SelectOption(
+            label="Set Dune News Channel",
+            description="Choose which text channel posts Dune Awakening updates",
+            value="set_dune_news_channel"
         ),
     ]
 
@@ -68,126 +70,130 @@ class ConfigSelect(Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        """
-        Called when a user selects one of the dropdown options.
-        We handle each 'value' by inspecting self.values[0].
-        """
-        choice = self.values[0]
-        user = interaction.user
-        channel = interaction.channel
-
-        # Only administrators can use this menu
         if not interaction.user.guild_permissions.administrator:
             return await interaction.response.send_message(
                 "❌ You must be an administrator to use this menu.",
                 ephemeral=True
             )
 
-        # For logging / debugging, you might uncomment:
-        # print(f"[ConfigMenu] {user} selected {choice} in {channel}")
+        choice = self.values[0]
 
-        # 1) Set Counting Channel
         if choice == "set_counting_channel":
-            if not isinstance(channel, discord.TextChannel):
-                return await interaction.response.send_message(
-                    "❌ Please run this command in a **text channel**.", ephemeral=True
-                )
-            set_config("counting_channel_id", channel.id)
-            await interaction.response.send_message(
-                f"🔢 Counting channel set to {channel.mention}.", ephemeral=True
+            await open_channel_select(
+                interaction,
+                config_key="counting_channel_id",
+                channel_types=[discord.ChannelType.text],
+                prompt="Select the **text channel** to be the counting channel."
             )
 
-        # 2) Toggle Counting
+        elif choice == "set_welcome_channel":
+            await open_channel_select(
+                interaction,
+                config_key="welcome_channel_id",
+                channel_types=[discord.ChannelType.text],
+                prompt="Select the **text channel** for welcome messages."
+            )
+
+        elif choice == "set_voice_status_channel":
+            await open_channel_select(
+                interaction,
+                config_key="voice_status_channel_id",
+                channel_types=[discord.ChannelType.voice],
+                prompt="Select the **voice channel** for auto‐rename stats."
+            )
+
+        elif choice == "set_voice_log_channel":
+            await open_channel_select(
+                interaction,
+                config_key="voice_log_channel_id",
+                channel_types=[discord.ChannelType.text],
+                prompt="Select the **text channel** to log voice activity."
+            )
+
+        elif choice == "set_reddit_channel":
+            await open_channel_select(
+                interaction,
+                config_key="reddit_channel_id",
+                channel_types=[discord.ChannelType.text],
+                prompt="Select the **text channel** for Reddit mirror posts."
+            )
+
+        elif choice == "set_dune_news_channel":
+            await open_channel_select(
+                interaction,
+                config_key="dune_news_channel_id",
+                channel_types=[discord.ChannelType.text],
+                prompt="Select the **text channel** for Dune: Awakening news updates."
+            )
+
         elif choice == "toggle_counting":
             current = get_config("counting_paused") or False
-            # In our design, we use 'counting_paused'—True means paused
-            new_value = not current
-            set_config("counting_paused", new_value)
-            state = "paused" if new_value else "resumed"
-            await interaction.response.send_message(
-                f"⏹️ Counting game is now **{state}**.", ephemeral=True
-            )
+            new = not current
+            set_config("counting_paused", new)
+            state = "paused" if new else "resumed"
+            await interaction.response.send_message(f"⏹️ Counting game is now **{state}**.", ephemeral=True)
 
-        # 3) Set Welcome Channel
-        elif choice == "set_welcome_channel":
-            if not isinstance(channel, discord.TextChannel):
-                return await interaction.response.send_message(
-                    "❌ Please run this command in a **text channel**.", ephemeral=True
-                )
-            set_config("welcome_channel_id", channel.id)
-            await interaction.response.send_message(
-                f"📬 Welcome channel set to {channel.mention}.", ephemeral=True
-            )
-
-        # 4) Toggle Welcome Messages
         elif choice == "toggle_welcome":
             current = get_config("welcome_enabled") or False
-            new_value = not current
-            set_config("welcome_enabled", new_value)
-            state = "enabled" if new_value else "disabled"
-            await interaction.response.send_message(
-                f"👋 Welcome messages are now **{state}**.", ephemeral=True
-            )
+            new = not current
+            set_config("welcome_enabled", new)
+            state = "enabled" if new else "disabled"
+            await interaction.response.send_message(f"👋 Welcome messages are now **{state}**.", ephemeral=True)
 
-        # 5) Set Voice Status Channel
-        elif choice == "set_voice_status_channel":
-            # Must be run in a voice channel
-            if not isinstance(channel, discord.VoiceChannel):
-                return await interaction.response.send_message(
-                    "❌ Please run this command **in a voice channel**.", ephemeral=True
-                )
-            set_config("voice_status_channel_id", channel.id)
-            await interaction.response.send_message(
-                f"🔊 Voice status channel set (auto‐rename enabled).", ephemeral=True
-            )
-
-        # 6) Toggle Voice Logging
         elif choice == "toggle_voice_logging":
             current = get_config("voice_logging_enabled") or False
-            new_value = not current
-            set_config("voice_logging_enabled", new_value)
-            state = "enabled" if new_value else "disabled"
-            await interaction.response.send_message(
-                f"📝 Voice logging is now **{state}**.", ephemeral=True
-            )
+            new = not current
+            set_config("voice_logging_enabled", new)
+            state = "enabled" if new else "disabled"
+            await interaction.response.send_message(f"📝 Voice logging is now **{state}**.", ephemeral=True)
 
-        # 7) Set Voice Log Channel
-        elif choice == "set_voice_log_channel":
-            if not isinstance(channel, discord.TextChannel):
-                return await interaction.response.send_message(
-                    "❌ Please run this command in a **text channel**.", ephemeral=True
-                )
-            set_config("voice_log_channel_id", channel.id)
-            await interaction.response.send_message(
-                f"📃 Voice log channel set to {channel.mention}.", ephemeral=True
-            )
-
-        # 8) Set Reddit Channel
-        elif choice == "set_reddit_channel":
-            if not isinstance(channel, discord.TextChannel):
-                return await interaction.response.send_message(
-                    "❌ Please run this command in a **text channel**.", ephemeral=True
-                )
-            set_config("reddit_channel_id", channel.id)
-            await interaction.response.send_message(
-                f"📡 Reddit mirror channel set to {channel.mention}.", ephemeral=True
-            )
-
-        # 9) Toggle Reddit Mirror
         elif choice == "toggle_reddit":
             current = get_config("reddit_enabled") or False
-            new_value = not current
-            set_config("reddit_enabled", new_value)
-            state = "enabled" if new_value else "disabled"
-            await interaction.response.send_message(
-                f"🚀 Reddit mirror is now **{state}**.", ephemeral=True
-            )
+            new = not current
+            set_config("reddit_enabled", new)
+            state = "enabled" if new else "disabled"
+            await interaction.response.send_message(f"📡 Reddit mirror is now **{state}**.", ephemeral=True)
 
-        # In case you add more options later, you can chain them here:
         else:
             await interaction.response.send_message(
-                f"❓ Unhandled configuration option: `{choice}`", ephemeral=True
+                f"❓ Unhandled configuration option: `{choice}`",
+                ephemeral=True
             )
+
+
+class ChannelSelectView(View):
+    def __init__(self, config_key: str, channel_types: list[discord.ChannelType], prompt: str):
+        super().__init__(timeout=60)
+        self.config_key = config_key
+        self.prompt = prompt
+
+        select = ChannelSelect(
+            placeholder="Choose a channel…",
+            channel_types=channel_types,
+            min_values=1,
+            max_values=1
+        )
+        select.callback = self.select_channel
+        self.add_item(select)
+
+    async def select_channel(self, interaction: discord.Interaction):
+        selected = interaction.data["values"][0]  # channel ID as string
+        channel_id = int(selected)
+        channel = interaction.guild.get_channel(channel_id)
+
+        set_config(self.config_key, channel_id)
+        mention = channel.mention if hasattr(channel, "mention") else f"<#{channel_id}>"
+        label = self.config_key.replace("_id", "").replace("_", " ").title()
+
+        await interaction.response.send_message(
+            f"✅ {label} set to {mention}.", ephemeral=True
+        )
+        self.stop()
+
+
+async def open_channel_select(interaction, config_key, channel_types, prompt):
+    view = ChannelSelectView(config_key=config_key, channel_types=channel_types, prompt=prompt)
+    await interaction.response.send_message(prompt, view=view, ephemeral=True)
 
 
 class ConfigMenu(commands.Cog):
@@ -195,22 +201,19 @@ class ConfigMenu(commands.Cog):
         self.bot = bot
 
     @app_commands.command(
-        name="config_menu",
-        description="Open the dropdown menu to configure all bot features."
+        name="setup",
+        description="Open the setup menu to configure bot features."
     )
     @app_commands.checks.has_permissions(administrator=True)
-    async def config_menu(self, interaction: discord.Interaction):
-        """
-        Sends an ephemeral message containing the dropdown (ConfigSelect).
-        Only administrators can invoke this.
-        """
+    async def setup(self, interaction: discord.Interaction):
         view = View()
         view.add_item(ConfigSelect())
         await interaction.response.send_message(
-            "🔧 **Configuration Menu**\nSelect an option below to configure that feature:",
+            "🔧 **Bot Setup Menu**\nSelect an option below to configure a feature:",
             view=view,
             ephemeral=True
         )
+
 
 async def setup(bot):
     await bot.add_cog(ConfigMenu(bot))
